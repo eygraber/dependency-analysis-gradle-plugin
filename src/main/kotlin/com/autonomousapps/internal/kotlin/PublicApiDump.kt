@@ -19,8 +19,15 @@ import java.io.File
 import java.io.InputStream
 import java.io.PrintStream
 import java.util.jar.JarFile
+import kotlin.metadata.KmClassifier
+import kotlin.metadata.KmFunction
+import kotlin.metadata.KmType
+import kotlin.metadata.KmTypeProjection
+import kotlin.metadata.KmVariance
+import kotlin.metadata.isSuspend
 import kotlin.metadata.jvm.JvmFieldSignature
 import kotlin.metadata.jvm.JvmMethodSignature
+import kotlinx.metadata.jvm.KotlinClassMetadata
 
 fun main(args: Array<String>) {
   val src = args[0]
@@ -67,6 +74,7 @@ internal fun getBinaryAPI(
         val mVisibility = visibilityMapNew[name]
         val classAccess = AccessFlags(effectiveAccess and Opcodes.ACC_STATIC.inv())
 
+        val kmClass = metadata?.toKmClass()
         val supertypes = listOf(superName) - "java/lang/Object" + interfaces.sorted()
 
         val memberSignatures = (
@@ -107,7 +115,16 @@ internal fun getBinaryAPI(
                 // nb: MethodNode.exceptions is NOT expressed as a type descriptor, rather as a path.
                 // e.g., not `Lcom/example/Foo;`, but just `com/example/Foo`
                 exceptions = exceptions
-              )
+              ).apply {
+                // Augment genericTypes with types from suspend function return types
+                // Use method.kotlinMetadata (extension property) to get KmFunction
+                method.kotlinMetadata?.let { kmFunction ->
+                  if (kmFunction.isSuspend) {
+                    // kmFunction.returnType is already a KmType
+                    (this.genericTypes as MutableSet<String>).addAll(getKmTypeDescriptors(kmFunction.returnType))
+                  }
+                }
+              }
             }
           }
           ).filter {
@@ -216,4 +233,35 @@ internal fun <T : Appendable> List<ClassBinarySignature>.dump(to: T): T = to.app
     }
     appendReproducibleNewLine("}\n")
   }
+}
+
+// Helper function to recursively extract type descriptors from KmType
+private fun getKmTypeDescriptors(kmType: KmType): Set<String> {
+  val descriptors = mutableSetOf<String>()
+
+  when (val classifier = kmType.classifier) {
+    is KmClassifier.Class -> {
+      // Convert class name to JVM descriptor format (e.g., "Lcom/example/MyType;")
+      descriptors.add("L${classifier.name.replace('.', '/')};")
+    }
+    is KmClassifier.TypeAlias -> {
+      // Type aliases also resolve to a class name that needs to be in descriptor format
+      descriptors.add("L${classifier.name.replace('.', '/')};")
+    }
+    is KmClassifier.TypeParameter -> {
+      // Type parameters are not concrete types, so we don't add them directly.
+      // Their bounds might be relevant, but the requirement is to extract constituent types.
+    }
+  }
+
+  kmType.arguments.forEach { typeProjection ->
+    // Only process if it's a normal type projection (not star projection)
+    if (typeProjection.variance != KmVariance.STAR) {
+      typeProjection.type?.let { argumentType ->
+        descriptors.addAll(getKmTypeDescriptors(argumentType))
+      }
+    }
+  }
+
+  return descriptors
 }
