@@ -19,12 +19,8 @@ import java.io.File
 import java.io.InputStream
 import java.io.PrintStream
 import java.util.jar.JarFile
-import kotlin.metadata.KmClass
 import kotlin.metadata.KmClassifier
-import kotlin.metadata.KmFunction
 import kotlin.metadata.KmType
-import kotlin.metadata.KmTypeProjection
-import kotlin.metadata.KmVariance
 import kotlin.metadata.isSuspend
 import kotlin.metadata.jvm.JvmFieldSignature
 import kotlin.metadata.jvm.JvmMethodSignature
@@ -117,14 +113,29 @@ internal fun getBinaryAPI(
                 // nb: MethodNode.exceptions is NOT expressed as a type descriptor, rather as a path.
                 // e.g., not `Lcom/example/Foo;`, but just `com/example/Foo`
                 exceptions = exceptions
-              ).apply {
+              ).let { signature ->
                 // Augment genericTypes with types from suspend function return types
                 // Use method.kotlinMetadata (extension property) to get KmFunction
-                kmClass?.functions?.find { it.signature == jvmMember }?.let { kmFunction ->
-                  if (kmFunction.isSuspend) {
-                    // kmFunction.returnType is already a KmType
-                    (this.genericTypes as MutableSet<String>).addAll(getKmTypeDescriptors(kmFunction.returnType))
+                val typeDescriptors = kmClass
+                  ?.functions
+                  ?.find { it.signature == signature.jvmMember }
+                  ?.let { kmFunction ->
+                    if (kmFunction.isSuspend) {
+                      // kmFunction.returnType is already a KmType
+//                      (signature.genericTypes as? MutableSet<String>)?.addAll(getKmTypeDescriptors(kmFunction.returnType))
+                      getKmTypeDescriptors(kmFunction.returnType)
+                    } else {
+                      null
+                    }
                   }
+
+                if(typeDescriptors == null) {
+                  signature
+                }
+                else {
+                  signature.copy(
+                    genericTypes = signature.genericTypes + typeDescriptors
+                  )
                 }
               }
             }
@@ -246,10 +257,12 @@ private fun getKmTypeDescriptors(kmType: KmType): Set<String> {
       // Convert class name to JVM descriptor format (e.g., "Lcom/example/MyType;")
       descriptors.add("L${classifier.name.replace('.', '/')};")
     }
+
     is KmClassifier.TypeAlias -> {
       // Type aliases also resolve to a class name that needs to be in descriptor format
       descriptors.add("L${classifier.name.replace('.', '/')};")
     }
+
     is KmClassifier.TypeParameter -> {
       // Type parameters are not concrete types, so we don't add them directly.
       // Their bounds might be relevant, but the requirement is to extract constituent types.
