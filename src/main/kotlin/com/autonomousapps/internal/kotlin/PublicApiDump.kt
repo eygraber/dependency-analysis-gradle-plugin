@@ -19,6 +19,7 @@ import java.io.File
 import java.io.InputStream
 import java.io.PrintStream
 import java.util.jar.JarFile
+import kotlin.metadata.KmClass
 import kotlin.metadata.KmClassifier
 import kotlin.metadata.KmFunction
 import kotlin.metadata.KmType
@@ -27,7 +28,8 @@ import kotlin.metadata.KmVariance
 import kotlin.metadata.isSuspend
 import kotlin.metadata.jvm.JvmFieldSignature
 import kotlin.metadata.jvm.JvmMethodSignature
-import kotlinx.metadata.jvm.KotlinClassMetadata
+import kotlin.metadata.jvm.KotlinClassMetadata
+import kotlin.metadata.jvm.signature
 
 fun main(args: Array<String>) {
   val src = args[0]
@@ -74,7 +76,7 @@ internal fun getBinaryAPI(
         val mVisibility = visibilityMapNew[name]
         val classAccess = AccessFlags(effectiveAccess and Opcodes.ACC_STATIC.inv())
 
-        val kmClass = metadata?.toKmClass()
+        val kmClass = (metadata as? KotlinClassMetadata.Class)?.kmClass
         val supertypes = listOf(superName) - "java/lang/Object" + interfaces.sorted()
 
         val memberSignatures = (
@@ -118,7 +120,7 @@ internal fun getBinaryAPI(
               ).apply {
                 // Augment genericTypes with types from suspend function return types
                 // Use method.kotlinMetadata (extension property) to get KmFunction
-                method.kotlinMetadata?.let { kmFunction ->
+                kmClass?.functions?.find { it.signature == jvmMember }?.let { kmFunction ->
                   if (kmFunction.isSuspend) {
                     // kmFunction.returnType is already a KmType
                     (this.genericTypes as MutableSet<String>).addAll(getKmTypeDescriptors(kmFunction.returnType))
@@ -256,7 +258,7 @@ private fun getKmTypeDescriptors(kmType: KmType): Set<String> {
 
   kmType.arguments.forEach { typeProjection ->
     // Only process if it's a normal type projection (not star projection)
-    if (typeProjection.variance != KmVariance.STAR) {
+    if (typeProjection.type != null) {
       typeProjection.type?.let { argumentType ->
         descriptors.addAll(getKmTypeDescriptors(argumentType))
       }
