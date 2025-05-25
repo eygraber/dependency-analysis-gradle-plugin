@@ -19,8 +19,10 @@ import java.io.File
 import java.io.InputStream
 import java.io.PrintStream
 import java.util.jar.JarFile
-import kotlin.metadata.KmClassifier
-import kotlin.metadata.KmType
+import kotlin.metadata.KmClassifier // Ensure this is present
+import kotlin.metadata.KmType // Ensure this is present
+// KmTypeAliasClassifier and KmTypeParameterClassifier are part of KmClassifier itself
+// No separate imports needed if using classifier.expandedType etc.
 import kotlin.metadata.isSuspend
 import kotlin.metadata.jvm.JvmFieldSignature
 import kotlin.metadata.jvm.JvmMethodSignature
@@ -254,27 +256,32 @@ private fun getKmTypeDescriptors(kmType: KmType): Set<String> {
 
   when (val classifier = kmType.classifier) {
     is KmClassifier.Class -> {
-      // Convert class name to JVM descriptor format (e.g., "Lcom/example/MyType;")
-      descriptors.add("L${classifier.name.replace('.', '/')};")
+      // KmClassifier.name for classes uses '/' for package separators and '.' for inner class separators (e.g., com/example/Outer.InnerClass).
+      // Convert to JVM descriptor format: Lcom/example/Outer$InnerClass;
+      descriptors.add("L${classifier.name.replace('.', '$')};")
     }
-
     is KmClassifier.TypeAlias -> {
-      // Type aliases also resolve to a class name that needs to be in descriptor format
-      descriptors.add("L${classifier.name.replace('.', '/')};")
+      // The alias name itself, converted to descriptor format.
+      // KmClassifier.name for type aliases also uses '/' for packages and '.' for inner class separators.
+      descriptors.add("L${classifier.name.replace('.', '$')};")
+      // Recursively process the expanded type of the alias.
+      // The `classifier` is a `KmTypeAliasClassifier` which has an `expandedType` property.
+      descriptors.addAll(getKmTypeDescriptors(classifier.expandedType))
     }
-
     is KmClassifier.TypeParameter -> {
-      // Type parameters are not concrete types, so we don't add them directly.
-      // Their bounds might be relevant, but the requirement is to extract constituent types.
+      // For type parameters, process their upper bounds.
+      // The `classifier` is a `KmTypeParameterClassifier` which has an `upperBounds` property.
+      classifier.upperBounds.forEach { upperBoundKmType ->
+        descriptors.addAll(getKmTypeDescriptors(upperBoundKmType))
+      }
     }
   }
 
+  // Process type arguments (e.g., for List<String>, process String)
   kmType.arguments.forEach { typeProjection ->
     // Only process if it's a normal type projection (not star projection)
-    if (typeProjection.type != null) {
-      typeProjection.type?.let { argumentType ->
-        descriptors.addAll(getKmTypeDescriptors(argumentType))
-      }
+    typeProjection.type?.let { argumentKmType ->
+      descriptors.addAll(getKmTypeDescriptors(argumentKmType))
     }
   }
 
