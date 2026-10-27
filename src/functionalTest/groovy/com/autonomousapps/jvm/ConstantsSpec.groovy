@@ -96,4 +96,19 @@ final class ConstantsSpec extends AbstractJvmSpec {
     where:
     gradleVersion << gradleVersions()
   }
+
+  def "detects const vals in a Kotlin object (#gradleVersion)"() {
+    given:
+    def project = new ConstantsProject.ObjectConstants()
+    gradleProject = project.gradleProject
+
+    when:
+    build(gradleVersion, gradleProject.rootDir, 'buildHealth')
+
+    then:
+    assertThat(project.actualBuildHealth()).containsExactlyElementsIn(project.expectedBuildHealth)
+
+    where:
+    gradleVersion << gradleVersions()
+  }
 }

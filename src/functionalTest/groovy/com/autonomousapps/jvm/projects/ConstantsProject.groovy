@@ -355,4 +355,104 @@ final class ConstantsProject {
       emptyProjectAdviceFor(':producer')
     ]
   }
+
+  final static class ObjectConstants extends AbstractProject {
+
+    final GradleProject gradleProject
+
+    ObjectConstants() {
+      this.gradleProject = build()
+    }
+
+    private GradleProject build() {
+      return newGradleProjectBuilder()
+        .withSubproject('import') { s ->
+          s.sources = importSources
+          s.withBuildScript { bs ->
+            bs.plugins = kotlin
+            bs.dependencies = [project('implementation', ':producer')]
+          }
+        }
+        .withSubproject('same-package') { s ->
+          s.sources = samePackageSources
+          s.withBuildScript { bs ->
+            bs.plugins = kotlin
+            bs.dependencies = [project('implementation', ':producer')]
+          }
+        }
+        .withSubproject('fully-qualified') { s ->
+          s.sources = fullyQualifiedSources
+          s.withBuildScript { bs ->
+            bs.plugins = kotlin
+            bs.dependencies = [project('implementation', ':producer')]
+          }
+        }
+        .withSubproject('producer') { s ->
+          s.sources = producerSources
+          s.withBuildScript { bs ->
+            bs.plugins = kotlin
+          }
+        }
+        .write()
+    }
+
+    private static final List<Source> importSources = [new Source(
+      SourceType.KOTLIN, 'Main', 'com/example/consumer',
+      """\
+        package com.example.consumer
+
+        import com.example.producer.Constants
+
+        class Main {
+          fun useConstant() {
+            println(Constants.CONSTANT)
+          }
+        }""".stripIndent()
+    )]
+
+    private static final List<Source> samePackageSources = [new Source(
+      SourceType.KOTLIN, 'Main', 'com/example/producer',
+      """\
+        package com.example.producer
+
+        class Main {
+          fun useConstant() {
+            println(Constants.CONSTANT)
+          }
+        }""".stripIndent()
+    )]
+
+    private static final List<Source> fullyQualifiedSources = [new Source(
+      SourceType.KOTLIN, 'Main', 'com/example/consumer',
+      """\
+        package com.example.consumer
+
+        class Main {
+          fun useConstant() {
+            println(com.example.producer.Constants.CONSTANT)
+          }
+        }""".stripIndent()
+    )]
+
+    private static final List<Source> producerSources = [new Source(
+      SourceType.KOTLIN, 'Constants', 'com/example/producer',
+      """\
+        package com.example.producer
+
+        object Constants {
+          const val CONSTANT = "magic"
+        }""".stripIndent()
+    )]
+
+    Set<ProjectAdvice> actualBuildHealth() {
+      return actualProjectAdvice(gradleProject)
+    }
+
+    final Set<ProjectAdvice> expectedBuildHealth = [
+      emptyProjectAdviceFor(':import'),
+      emptyProjectAdviceFor(':same-package'),
+      emptyProjectAdviceFor(':fully-qualified'),
+      emptyProjectAdviceFor(':producer'),
+    ]
+  }
 }
