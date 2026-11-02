@@ -12,7 +12,7 @@ import static com.google.common.truth.Truth.assertAbout
 final class VariantDeclarationSpec extends AbstractAndroidSpec {
 
   @PendingFeature // TODO(tsr): temporary
-  def "does not move a dependency declared on every variant to implementation (#gradleVersion AGP #agpVersion)"() {
+  def "moves a dependency declared on every variant to implementation (#gradleVersion AGP #agpVersion)"() {
     given:
     def project = new VariantDeclarationProject(agpVersion)
     gradleProject = project.gradleProject
