@@ -50,7 +50,6 @@ final class VariantDeclarationProject extends AbstractAndroidProject {
           }
         '''
       )
-      .withPath('com.example.consumer', 'Consumer')
       .build(),
   ]
 
